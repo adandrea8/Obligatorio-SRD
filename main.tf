@@ -2,19 +2,20 @@ provider "aws" {
   region = "us-east-1"
 }
 
-# Crear una nueva VPC
 resource "aws_vpc" "vpc_obligatorio" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_support   = true
   enable_dns_hostnames = true
 
+  tags = {
+    Name = "vpc_obligatorio"
+  }
 }
 
-resource "aws_security_group" "sg_jump_server" {
+resource "aws_security_group" "sg_siem" {
   vpc_id = aws_vpc.vpc_obligatorio.id
-  name   = "sg_jump_server"
+  name   = "sg_siem"
 
-  # Permitir tráfico SSH (puerto 22) desde cualquier lugar
   ingress {
     from_port   = 22
     to_port     = 22
@@ -22,7 +23,43 @@ resource "aws_security_group" "sg_jump_server" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  # Permitir todo el tráfico de salida
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "sg_siem"
+  }
+}
+
+
+resource "aws_instance" "siem" {
+  ami           = "ami-064519b8c76274859"  
+  instance_type = "t2.micro"               
+  subnet_id     = aws_subnet.subnet_private_a.id
+  security_groups = [aws_security_group.sg_jump_server.id]  
+ 
+  key_name = "vockey" 
+
+  tags = {
+    Name = "siem"
+  }
+}
+
+resource "aws_security_group" "sg_jump_server" {
+  vpc_id = aws_vpc.vpc_obligatorio.id
+  name   = "sg_jump_server"
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -35,23 +72,22 @@ resource "aws_security_group" "sg_jump_server" {
   }
 }
 
-# 4. Crear una Instancia EC2
-resource "aws_instance" "jump_server" {
-  ami           = "ami-064519b8c76274859"  # AMI de ejemplo para Amazon Linux 2 en us-east-1
-  instance_type = "t2.micro"               # Tipo de instancia (elige según tus necesidades)
-  subnet_id     = aws_subnet.subnet_public_a.id
-  security_groups = [aws_security_group.sg_jump_server.id]  # Asociar el grupo de seguridad
 
-  # Configurar el acceso con clave SSH
-  key_name = "vockey"  # Debes crear la clave en AWS previamente o especificar una existente
+resource "aws_instance" "jump_server" {
+  ami           = "ami-064519b8c76274859"  
+  instance_type = "t2.micro"               
+  subnet_id     = aws_subnet.subnet_public_a.id
+  security_groups = [aws_security_group.sg_jump_server.id]  
+ 
+  key_name = "vockey" 
 
   tags = {
     Name = "jump_server"
   }
 }
 
-resource "aws_security_group" "tf_sg_lb_obligatorio" {
-  name = "tf_sg_lb_obligatorio"
+resource "aws_security_group" "sg_load_balancer" {
+  name = "sg_load_balancer"
   vpc_id = aws_vpc.vpc_obligatorio.id
   ingress {
     from_port   = 80
@@ -66,11 +102,13 @@ resource "aws_security_group" "tf_sg_lb_obligatorio" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"] # ingresar ip del WAF
   }
-
+  tags = {
+    Name = "sg_load_balancer"
+  }
 }
 
-resource "aws_security_group" "tf_sg_appweb_obligatorio" {
-  name = "tf_sg_appweb_obligatorio"
+resource "aws_security_group" "sg_appweb" {
+  name = "sg_appweb"
   vpc_id = aws_vpc.vpc_obligatorio.id
   ingress {
     from_port   = 22
@@ -82,7 +120,7 @@ resource "aws_security_group" "tf_sg_appweb_obligatorio" {
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    security_groups  = [aws_security_group.tf_sg_lb_obligatorio.id]
+    security_groups  = [aws_security_group.sg_load_balancer.id]
   }
   egress {
     from_port   = 0
@@ -90,7 +128,9 @@ resource "aws_security_group" "tf_sg_appweb_obligatorio" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"] # luego de la instalacion se debe quitar la salida a internet (se podria hacer creando un security group con un deny que se aplique luego de que este todo hecho con un depends on)
   }
-
+  tags = {
+    Name = "sg_appweb"
+  }
 }
 
 # resource "aws_security_group" "tf_sg_mysql_obligatorio" {
@@ -102,24 +142,28 @@ resource "aws_security_group" "tf_sg_appweb_obligatorio" {
 #     from_port   = 3306
 #     to_port     = 3306
 #     protocol    = "tcp"
-#     security_groups  = [aws_security_group.tf_sg_appweb_obligatorio.id]
+#     security_groups  = [aws_security_group.sg_appweb.id]
 #   }
 # }
 
 
 # Crear un Internet Gateway
-resource "aws_internet_gateway" "obligatorio_igw" {
+resource "aws_internet_gateway" "internet_gateway" {
   vpc_id = aws_vpc.vpc_obligatorio.id
-
+  tags = {
+    Name = "internet_gateway"
+  }
 }
 
-# Crear subredes en la zona de disponibilidad A y B dentro de la nueva VPC
+# Crear subredes privadas y publicas en las zonas de disponibilidad A y B dentro de la nueva VPC
 resource "aws_subnet" "subnet_private_a" {
   vpc_id            = aws_vpc.vpc_obligatorio.id
   cidr_block        = "10.0.1.0/24"
   availability_zone = "us-east-1a"
   map_public_ip_on_launch = "true"
-
+  tags = {
+    Name = "subnet_private_a"
+  }
 }
 
 resource "aws_subnet" "subnet_private_b" {
@@ -127,7 +171,9 @@ resource "aws_subnet" "subnet_private_b" {
   cidr_block        = "10.0.2.0/24"
   availability_zone = "us-east-1b"
   map_public_ip_on_launch = "true"
-
+  tags = {
+    Name = "subnet_private_b"
+  }
 }
 
 resource "aws_subnet" "subnet_public_a" {
@@ -135,7 +181,9 @@ resource "aws_subnet" "subnet_public_a" {
   cidr_block        = "10.0.3.0/24"
   availability_zone = "us-east-1a"
   map_public_ip_on_launch = "true"
-
+  tags = {
+    Name = "subnet_public_a"
+  }
 }
 
 resource "aws_subnet" "subnet_public_b" {
@@ -143,7 +191,9 @@ resource "aws_subnet" "subnet_public_b" {
   cidr_block        = "10.0.4.0/24"
   availability_zone = "us-east-1b"
   map_public_ip_on_launch = "true"
-
+  tags = {
+    Name = "subnet_public_a"
+  }
 }
 
 
@@ -155,39 +205,41 @@ resource "aws_subnet" "subnet_public_b" {
 #}
 
 
-resource "aws_route_table" "route_table_obligatorio" {
+resource "aws_route_table" "route_table" {
   vpc_id = aws_vpc.vpc_obligatorio.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.obligatorio_igw.id
+    gateway_id = aws_internet_gateway.internet_gateway.id
   }
-
+  tags = {
+    Name = "route_table"
+  }
 }
 
 resource "aws_route_table_association" "subnet_public_a_asso" {
   subnet_id      = aws_subnet.subnet_public_a.id
-  route_table_id = aws_route_table.route_table_obligatorio.id
+  route_table_id = aws_route_table.route_table.id
 }
 
 resource "aws_route_table_association" "subnet_public_b_asso" {
   subnet_id      = aws_subnet.subnet_public_b.id
-  route_table_id = aws_route_table.route_table_obligatorio.id
+  route_table_id = aws_route_table.route_table.id
 }
 
-# 7. Crear una Elastic IP para el NAT Gateway
+# Crear una Elastic IP para el NAT Gateway de la AV a
 resource "aws_eip" "nat_eip_a" {
   domain = "vpc"
 }
 
-# 8. Crear el NAT Gateway en la subred pública
+# Crear el NAT Gateway en la subred pública de la AV a
 resource "aws_nat_gateway" "nat_gateway_a" {
   allocation_id = aws_eip.nat_eip_a.id
   subnet_id     = aws_subnet.subnet_public_a.id
 
 }
 
-# 9. Crear una tabla de rutas para la subred privada
+# Crear una tabla de rutas para la subred privada a
 resource "aws_route_table" "private_route_table_a" {
   vpc_id = aws_vpc.vpc_obligatorio.id
 
@@ -198,26 +250,26 @@ resource "aws_route_table" "private_route_table_a" {
 
 }
 
-# 10. Asociar la tabla de rutas privada a la subred privada
+# Asociar la tabla de rutas privada a la subred privada a
 resource "aws_route_table_association" "subnet_private_a_asso" {
   subnet_id      = aws_subnet.subnet_private_a.id
   route_table_id = aws_route_table.private_route_table_a.id
 }
 
 
-# 7. Crear una Elastic IP para el NAT Gateway
+# Crear una Elastic IP para el NAT Gateway de la AV b
 resource "aws_eip" "nat_eip_b" {
   domain = "vpc"
 }
 
-# 8. Crear el NAT Gateway en la subred pública
+# Crear el NAT Gateway en la subred pública de la AV b
 resource "aws_nat_gateway" "nat_gateway_b" {
   allocation_id = aws_eip.nat_eip_b.id
   subnet_id     = aws_subnet.subnet_public_b.id
 
 }
 
-# 9. Crear una tabla de rutas para la subred privada
+# Crear una tabla de rutas para la subred privada b
 resource "aws_route_table" "private_route_table_b" {
   vpc_id = aws_vpc.vpc_obligatorio.id
 
@@ -228,7 +280,7 @@ resource "aws_route_table" "private_route_table_b" {
 
 }
 
-# 10. Asociar la tabla de rutas privada a la subred privada
+# Asociar la tabla de rutas privada a la subred privada b
 resource "aws_route_table_association" "subnet_private_b_asso" {
   subnet_id      = aws_subnet.subnet_private_b.id
   route_table_id = aws_route_table.private_route_table_b.id
@@ -236,19 +288,19 @@ resource "aws_route_table_association" "subnet_private_b_asso" {
 
 
 # Crear un balanceador de carga de aplicación (ALB)
-resource "aws_lb" "obligatorio_alb" {
-  name               = "obligatorio-alb"
+resource "aws_lb" "aplitation_load_balancer" {
+  name               = "aplitation-load-balancer"
   internal           = false
   load_balancer_type = "application"
-  security_groups    = [aws_security_group.tf_sg_lb_obligatorio.id]
+  security_groups    = [aws_security_group.sg_load_balancer.id]
   subnets            = [aws_subnet.subnet_private_a.id, aws_subnet.subnet_private_b.id]
 
 
 }
 
 # Definir reglas de escucha y destino para el ALB
-resource "aws_lb_listener" "obligatorio_listener" {
-  load_balancer_arn = aws_lb.obligatorio_alb.arn
+resource "aws_lb_listener" "listener" {
+  load_balancer_arn = aws_lb.aplitation_load_balancer.arn
   port              = "80"
   protocol          = "HTTP"
 
@@ -278,8 +330,8 @@ resource "aws_lb_target_group" "obligatorio_target_group" {
 
 }
 
-resource "aws_lb_listener_rule" "obligatorio_listener-rule" {
-  listener_arn = aws_lb_listener.obligatorio_listener.arn
+resource "aws_lb_listener_rule" "listener_rule" {
+  listener_arn = aws_lb_listener.listener.arn
   priority     = 100
 
   action {
@@ -337,7 +389,7 @@ resource "aws_launch_template" "webapp_launch_template" {
   network_interfaces {
     associate_public_ip_address = true
     subnet_id                   = aws_subnet.subnet_private_a.id
-    security_groups             = [aws_security_group.tf_sg_appweb_obligatorio.id]
+    security_groups             = [aws_security_group.sg_appweb.id]
   }
 
   tag_specifications {
