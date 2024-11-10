@@ -192,7 +192,7 @@ resource "aws_subnet" "subnet_public_b" {
   availability_zone = "us-east-1b"
   map_public_ip_on_launch = "true"
   tags = {
-    Name = "subnet_public_a"
+    Name = "subnet_public_b"
   }
 }
 
