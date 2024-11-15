@@ -20,7 +20,7 @@ resource "aws_security_group" "sg_siem" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    security_groups  = [aws_security_group.sg_jump_server.id]
   }
 
   egress {
@@ -37,15 +37,28 @@ resource "aws_security_group" "sg_siem" {
 
 
 resource "aws_instance" "siem" {
-  ami           = "ami-064519b8c76274859"  
+  ami           = "ami-063d43db0594b521b"  
   instance_type = "t2.micro"               
   subnet_id     = aws_subnet.subnet_private_a.id
-  security_groups = [aws_security_group.sg_jump_server.id]  
+  security_groups = [aws_security_group.sg_siem.id]  
  
   key_name = "vockey" 
 
   tags = {
     Name = "siem"
+  }
+}
+
+resource "aws_instance" "waf" {
+  ami           = "ami-063d43db0594b521b"  
+  instance_type = "t2.micro"               
+  subnet_id     = aws_subnet.subnet_public_b.id
+  security_groups = [aws_security_group.sg_waf.id]  
+ 
+  key_name = "vockey" 
+
+  tags = {
+    Name = "waf"
   }
 }
 
@@ -55,9 +68,9 @@ resource "aws_security_group" "sg_jump_server" {
 
   ingress {
     from_port   = 22
-    to_port     = 22
+    to_port     = 2222
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+    cidr_blocks = ["0.0.0.0/0"] # En este campo se pondria nuestra IP 
   }
 
   egress {
@@ -74,12 +87,14 @@ resource "aws_security_group" "sg_jump_server" {
 
 
 resource "aws_instance" "jump_server" {
-  ami           = "ami-064519b8c76274859"  
+  ami           = "ami-063d43db0594b521b"  
   instance_type = "t2.micro"               
   subnet_id     = aws_subnet.subnet_public_a.id
   security_groups = [aws_security_group.sg_jump_server.id]  
  
   key_name = "vockey" 
+
+  user_data = base64encode(local.jump_server_user_data)
 
   tags = {
     Name = "jump_server"
@@ -94,16 +109,43 @@ resource "aws_security_group" "sg_load_balancer" {
     to_port     = 80
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+#    security_groups  = [aws_security_group.sg_waf.id]
   }
 
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"] # ingresar ip del WAF
+    cidr_blocks = ["0.0.0.0/0"] 
   }
   tags = {
     Name = "sg_load_balancer"
+  }
+}
+
+resource "aws_security_group" "sg_waf" {
+  name = "sg_waf"
+  vpc_id = aws_vpc.vpc_obligatorio.id
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    security_groups  = [aws_security_group.sg_jump_server.id] 
+  }
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"] 
+  }
+  tags = {
+    Name = "sg_waf"
   }
 }
 
@@ -114,7 +156,7 @@ resource "aws_security_group" "sg_appweb" {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # ingresar ip del servidor de administracion
+    security_groups  = [aws_security_group.sg_jump_server.id] 
   }
   ingress {
     from_port   = 80
@@ -126,25 +168,24 @@ resource "aws_security_group" "sg_appweb" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"] # luego de la instalacion se debe quitar la salida a internet (se podria hacer creando un security group con un deny que se aplique luego de que este todo hecho con un depends on)
+    cidr_blocks = ["0.0.0.0/0"] 
   }
   tags = {
     Name = "sg_appweb"
   }
 }
 
-# resource "aws_security_group" "tf_sg_mysql_obligatorio" {
-#   name        = "tf_sg_mysql_obligatorio"
-#   description = "Security group MySQL"
-#   vpc_id      = aws_vpc.vpc_obligatorio.id
+resource "aws_security_group" "sg_mysql" {
+  name        = "sg_mysql"
+  vpc_id      = aws_vpc.vpc_obligatorio.id
 
-#   ingress {
-#     from_port   = 3306
-#     to_port     = 3306
-#     protocol    = "tcp"
-#     security_groups  = [aws_security_group.sg_appweb.id]
-#   }
-# }
+  ingress {
+    from_port   = 3306
+    to_port     = 3306
+    protocol    = "tcp"
+    security_groups  = [aws_security_group.sg_appweb.id]
+  }
+}
 
 
 # Crear un Internet Gateway
@@ -199,10 +240,10 @@ resource "aws_subnet" "subnet_public_b" {
 
 
 # Crear grupo de subredes para la base de datos dentro de la nueva VPC
-#resource "aws_db_subnet_group" "obligatorio_db_subnet_group" {
-#  name       = "obligatorio-db-subnet-group"
-#  subnet_ids = [aws_subnet.subnet_private_a.id, aws_subnet.subnet_private_b.id]
-#}
+resource "aws_db_subnet_group" "db_subnet_group" {
+  name       = "mysql_db-subnet-group"
+  subnet_ids = [aws_subnet.subnet_private_a.id, aws_subnet.subnet_private_b.id]
+}
 
 
 resource "aws_route_table" "route_table" {
@@ -293,7 +334,7 @@ resource "aws_lb" "aplitation_load_balancer" {
   internal           = false
   load_balancer_type = "application"
   security_groups    = [aws_security_group.sg_load_balancer.id]
-  subnets            = [aws_subnet.subnet_private_a.id, aws_subnet.subnet_private_b.id]
+  subnets            = [aws_subnet.subnet_public_a.id, aws_subnet.subnet_public_b.id]
 
 
 }
@@ -346,45 +387,58 @@ resource "aws_lb_listener_rule" "listener_rule" {
   }
 }
 
-# resource "aws_db_instance" "obligatorio-db" {
-#   allocated_storage    = 20
-#   storage_type         = "gp2"
-#   engine               = "mysql"
-#   engine_version       = "5.7.44" 
-#   instance_class       = "db.t3.micro" 
-#   username             = "admin"
-#   password             = "password"
-#   skip_final_snapshot  = true
-#   vpc_security_group_ids = [aws_security_group.tf_sg_mysql_obligatorio.id]
-#   db_subnet_group_name = aws_db_subnet_group.obligatorio_db_subnet_group.name
-#   db_name              = "iDukan"
-#   tags = {
-#     Name = "obligatorio-db"
-#   }
-# }
+resource "aws_db_instance" "mysql_db" {
+  allocated_storage    = 20
+  storage_type         = "gp2"
+  engine               = "mysql"
+  engine_version       = "5.7.44" 
+  instance_class       = "db.t3.micro" 
+  username             = "admin"
+  password             = "password"
+  skip_final_snapshot  = true
+  vpc_security_group_ids = [aws_security_group.sg_mysql.id]
+  db_subnet_group_name = aws_db_subnet_group.db_subnet_group.name
+  db_name              = "FondoBlanco" 
+  tags = {
+    Name = "mysql_db"
+  }
+}
 
 
-#locals {
- # webapp_user_data = <<-EOF
-   # #!/bin/bash
-    
-  
-  #  sudo systemctl enable httpd
-  #  sudo systemctl start httpd
-    
-    
-    #sudo systemctl restart httpd
-#  EOF
-#}
+locals {
+  webapp_user_data = <<-EOF
+    #!/bin/bash
+    sudo yum -y install httpd
+    sudo systemctl enable httpd
+    sudo systemctl start httpd
+
+  EOF
+  jump_server_user_data = <<-EOF
+    #!/bin/bash
+    sudo dnf -y install firewalld
+    sudo echo "Advertencia: Acceso no autorizado. Este sistema es propiedad del obligatorio" > /home/ec2-user/banner.txt
+    sudo sed -i 's|#Banner none|Banner /home/ec2-user/banner.txt|' /etc/ssh/sshd_config
+
+    sudo sed -i 's/#Port 22/Port 2222/' /etc/ssh/sshd_config
+    sudo systemctl start firewalld
+    sudo systemctl enable firewalld
+    sudo firewall-cmd --permanent --add-rich-rule="rule family='ipv4' source address='0.0.0.0/0' port port=2222 protocol=tcp accept"
+    #sudo firewall-cmd --permanent --remove-service=ssh
+    sudo firewall-cmd --reload
+    sudo systemctl restart sshd
+
+
+  EOF
+}
 
 resource "aws_launch_template" "webapp_launch_template" {
   name_prefix   = "webapp_launch_template"
-  image_id      = "ami-064519b8c76274859"
+  image_id      = "ami-063d43db0594b521b"
   instance_type = "t2.micro"
   key_name      = "vockey"
-  ebs_optimized = false  # Opcional: ajusta según tus necesidades
+  
 
-  #depends_on = [aws_db_instance.obligatorio-db, aws_efs_file_system.efs_obligatorio]
+  depends_on = [aws_db_instance.mysql_db]
 
   network_interfaces {
     associate_public_ip_address = true
@@ -395,12 +449,12 @@ resource "aws_launch_template" "webapp_launch_template" {
   tag_specifications {
     resource_type = "instance"
     tags = {
-      Name      = "webapp"
+      Name      = "WebApp"
       terraform = "True"
     }
   }
 
-  #user_data = base64encode(local.webapp_user_data)
+  user_data = base64encode(local.webapp_user_data)
 }
 
 resource "aws_autoscaling_group" "webapp_autoscaling_group" {
@@ -414,12 +468,12 @@ resource "aws_autoscaling_group" "webapp_autoscaling_group" {
   max_size                  = 3
   desired_capacity          = 2
 
-  vpc_zone_identifier       = [aws_subnet.subnet_private_a.id, aws_subnet.subnet_private_b.id]  # ID de la subred donde lanzar las instancias
+  vpc_zone_identifier       = [aws_subnet.subnet_private_a.id, aws_subnet.subnet_private_b.id]  
 
-  target_group_arns         = [aws_lb_target_group.obligatorio_target_group.arn]  # ARN del Target Group si se usa con un ALB
+  target_group_arns         = [aws_lb_target_group.obligatorio_target_group.arn]  
 
-  health_check_type         = "EC2"  # Cambiado a EC2
-  health_check_grace_period = 300  # Aumentado a 300 segundos (5 minutos)
+  health_check_type         = "EC2"  
+  health_check_grace_period = 300  
 
   lifecycle {
     create_before_destroy   = true
