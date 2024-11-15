@@ -423,7 +423,7 @@ locals {
     sudo systemctl start firewalld
     sudo systemctl enable firewalld
     sudo firewall-cmd --permanent --add-rich-rule="rule family='ipv4' source address='0.0.0.0/0' port port=2222 protocol=tcp accept"
-    #sudo firewall-cmd --permanent --remove-service=ssh
+    sudo firewall-cmd --permanent --remove-service=ssh
     sudo firewall-cmd --reload
     sudo systemctl restart sshd
 
