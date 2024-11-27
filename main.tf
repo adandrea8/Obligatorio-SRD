@@ -427,6 +427,10 @@ locals {
     sudo firewall-cmd --reload
     sudo systemctl restart sshd
 
+    sudo dnf install -y openscap openscap-scanner scap-security-guide
+    sudo oscap info /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
+    sudo oscap xccdf eval --profile xccdf_org.ssgproject.content_profile_cis --results /tmp/oscap-results.xml --report /tmp/oscap-report.html /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
+    sudo oscap xccdf eval --profile xccdf_org.ssgproject.content_profile_cis --remediate /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
 
   EOF
 }
