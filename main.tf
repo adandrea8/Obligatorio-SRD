@@ -427,11 +427,18 @@ locals {
     sudo firewall-cmd --reload
     sudo systemctl restart sshd
 
-    sudo dnf install -y openscap openscap-scanner scap-security-guide
-    sudo oscap info /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
-    sudo oscap xccdf eval --profile xccdf_org.ssgproject.content_profile_cis --results /tmp/oscap-results.xml --report /tmp/oscap-report.html /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
-    sudo oscap xccdf eval --profile xccdf_org.ssgproject.content_profile_cis --remediate /usr/share/xml/scap/ssg/content/ssg-rhel9-ds.xml
+#VALIDAR QUE NO BLOQUEE EL USUARIO EC2 
 
+    sudo dnf install -y openscap openscap-scanner scap-security-guide
+
+    sudo oscap info /usr/share/xml/scap/ssg/content/ssg-al2023-ds.xml
+
+    sudo oscap xccdf eval \
+    --profile xccdf_org.ssgproject.content_profile_standard \
+    --remediate \
+    /usr/share/xml/scap/ssg/content/ssg-al2023-ds.xml
+
+  echo "Hardening completado y configuraciones aplicadas correctamente." | sudo tee /var/log/hardening_status.log
   EOF
 }
 
@@ -484,4 +491,28 @@ resource "aws_autoscaling_group" "webapp_autoscaling_group" {
   }
   
   depends_on = [aws_launch_template.webapp_launch_template]
+}
+
+resource "null_resource" "copy_vockey_to_jump" {
+  connection {
+    type        = "ssh"
+    user        = "ec2-user" # Usuario del Jump Server
+    private_key = file("C:/clave.pem") # Clave para acceder al Jump Server
+    host        = aws_instance.jump_server.public_ip
+    port        = 2222 # Cambia si tu puerto SSH es diferente
+  }
+
+  provisioner "file" {
+    source      = "C:/clave.pem"  # Ruta local del archivo vockey.pem
+    destination = "/home/ec2-user/.ssh/clave.pem" # Destino en el Jump Server
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "chmod 600 /home/ec2-user/.ssh/clave.pem"
+    ]
+
+    ## Desde el jump-server se ingresa a los demas servidores para su gestion:
+    ## "ssh -i /home/ec2-user/.ssh/clave.pem ec2-user@IP PRIVADA"
+  }
 }
