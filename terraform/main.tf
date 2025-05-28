@@ -1,0 +1,1 @@
+# Código Terraform extraído del obligatorio (ver PDF para detalles)
