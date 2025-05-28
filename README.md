@@ -11,9 +11,6 @@ Diseñar e implementar una arquitectura segura en la nube (AWS) con foco en buen
 ![Diagrama AWS](https://github.com/adandrea8/Obligatorio-SRD/blob/main/anexo/Diagrama-SRD.jpg)
 
 
-## Componentes
-A continuación, se describen los distintos componentes utilizados en nuestra solución.
-
 ### Jump-SRV
 Este será nuestro servidor de salto, se encuentra en una subred pública, para que los administradores
 puedan acceder a esta máquina y luego conectarse para administrar todos los equipos de la red, de
