@@ -33,6 +33,9 @@ un Auto Scaling Group para ajustar automáticamente la capacidad en función de 
 servidores solo podrán recibir peticiones HTTP/HTTPS desde el load balancer que distribuirá el
 tráfico entre los dos.
 
+![web](https://github.com/adandrea8/Obligatorio-SRD/blob/main/anexo/web.jpg)
+
+
 ## 🧩 Componentes del proyecto
 
 - **Terraform:** Automatización del despliegue de infraestructura.
