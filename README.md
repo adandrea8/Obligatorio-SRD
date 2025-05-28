@@ -1,10 +1,15 @@
-# Seguridad en Redes y Datos - Obligatorio 2024
+# Seguridad en Redes y Datos
 
-Este repositorio contiene el proyecto final del curso **Seguridad en Redes y Datos (SDR)**, realizado por **Alexis D’Andrea** y **Nicolas Martins** para el sexto semestre de la carrera en ORT.
+Este repositorio contiene el proyecto final del curso **Seguridad en Redes y Datos (SDR)**, realizado por **Alexis D’Andrea** y **Nicolas Martins**.
 
 ## 📌 Objetivo
 
 Diseñar e implementar una arquitectura segura en la nube (AWS) con foco en buenas prácticas, automatización e implementación de soluciones como WAF, SIEM, hardening y autenticación federada.
+
+## Arquitectura Implementada
+
+![Diagrama AWS](https://github.com/adandrea8/Obligatorio-SRD/blob/main/anexo/Diagrama-SRD.jpg)
+
 
 ## 🧩 Componentes del proyecto
 
